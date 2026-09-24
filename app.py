@@ -1,9 +1,18 @@
-!pip -q install dash plotly requests
 import requests
 import pandas as pd
-
-from dash import Dash, dcc, html, Input, Output
+import streamlit as st
 import plotly.graph_objects as go
+from streamlit_autorefresh import st_autorefresh
+
+
+# ============================================================
+# PAGE CONFIG
+# ============================================================
+
+st.set_page_config(
+    page_title="Real-Time Gold Price",
+    layout="wide"
+)
 
 
 # ============================================================
@@ -19,7 +28,7 @@ PARAMS = {
 
 
 # ============================================================
-# LẤY DỮ LIỆU
+# LẤY DỮ LIỆU TỪ API
 # ============================================================
 
 def get_candles():
@@ -36,7 +45,9 @@ def get_candles():
 
     df = pd.DataFrame(data["bars"])
 
-    df["openTime"] = pd.to_datetime(df["openTime"])
+    df["openTime"] = pd.to_datetime(
+        df["openTime"]
+    )
 
     df = df.sort_values("openTime")
 
@@ -44,130 +55,41 @@ def get_candles():
 
 
 # ============================================================
-# DASH APP
+# REAL-TIME REFRESH
 # ============================================================
 
-app = Dash(__name__)
-
-
-app.layout = html.Div(
-
-    style={
-        "width": "90%",
-        "margin": "auto",
-        "fontFamily": "Arial"
-    },
-
-    children=[
-
-        html.H1(
-            "Real-Time Gold Price Dashboard",
-            style={"textAlign": "center"}
-        ),
-
-        html.H3(
-            "XAU/USD - 1 Minute Candlestick",
-            style={"textAlign": "center"}
-        ),
-
-        # Thông tin giá
-        html.Div(
-            style={
-                "display": "flex",
-                "justifyContent": "space-around",
-                "textAlign": "center",
-                "margin": "20px"
-            },
-
-            children=[
-
-                html.Div([
-                    html.H4("Current Price"),
-                    html.H2(id="current-price")
-                ]),
-
-                html.Div([
-                    html.H4("Price Change"),
-                    html.H2(id="price-change")
-                ]),
-
-                html.Div([
-                    html.H4("Last Update"),
-                    html.H2(id="last-update")
-                ])
-            ]
-        ),
-
-        # Biểu đồ
-        dcc.Graph(
-            id="candlestick"
-        ),
-
-        # Status
-        html.Div(
-            id="status",
-            style={
-                "textAlign": "center",
-                "margin": "15px"
-            }
-        ),
-
-        html.Hr(),
-
-        html.Div(
-            "Data Source: BiQuote API | "
-            "Symbol: XAU/USD | "
-            "Candle: 1 minute | "
-            "Refresh: 3 seconds",
-
-            style={
-                "textAlign": "center",
-                "fontSize": "14px"
-            }
-        ),
-
-        # Cập nhật mỗi 3 giây
-        dcc.Interval(
-            id="interval",
-            interval=3000,
-            n_intervals=0
-        )
-    ]
+st_autorefresh(
+    interval=3000,
+    key="gold_price_refresh"
 )
 
 
 # ============================================================
-# CALLBACK
+# TITLE
 # ============================================================
 
-@app.callback(
+st.title("Real-Time Gold Price Dashboard")
 
-    [
-        Output("candlestick", "figure"),
-        Output("current-price", "children"),
-        Output("price-change", "children"),
-        Output("last-update", "children"),
-        Output("status", "children")
-    ],
-
-    Input(
-        "interval",
-        "n_intervals"
-    )
-)
+st.subheader("XAU/USD - 1 Minute Candlestick")
 
 
-def update_graph(n):
+# ============================================================
+# LẤY DỮ LIỆU
+# ============================================================
 
-    # Lấy dữ liệu mới từ API
+try:
+
     df = get_candles()
 
-    # Cây nến mới nhất
     latest = df.iloc[-1]
 
     current_price = float(latest["close"])
 
-    # Tính thay đổi giá
+
+    # --------------------------------------------------------
+    # PRICE CHANGE
+    # --------------------------------------------------------
+
     if len(df) >= 2:
 
         previous_price = float(
@@ -186,24 +108,41 @@ def update_graph(n):
         change_percent = 0
 
 
-    # Hiển thị Price Change
-    if change >= 0:
+    # ========================================================
+    # METRICS
+    # ========================================================
 
-        price_change = (
-            f"+${change:.2f} "
-            f"(+{change_percent:.2f}%)"
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+
+        st.metric(
+            "Current Price",
+            f"${current_price:.2f}"
         )
 
-    else:
+    with col2:
 
-        price_change = (
-            f"${change:.2f} "
-            f"({change_percent:.2f}%)"
+        st.metric(
+            "Price Change",
+            f"${change:.2f}",
+            f"{change_percent:.2f}%"
+        )
+
+    with col3:
+
+        update_time = latest["openTime"].strftime(
+            "%H:%M:%S"
+        )
+
+        st.metric(
+            "Last Update",
+            update_time
         )
 
 
     # ========================================================
-    # CANDLESTICK
+    # CANDLESTICK CHART
     # ========================================================
 
     fig = go.Figure()
@@ -237,18 +176,13 @@ def update_graph(n):
 
         height=600,
 
-        xaxis_rangeslider_visible=False,
-
-        template="plotly_white"
+        xaxis_rangeslider_visible=False
     )
 
 
-    # ========================================================
-    # THỜI GIAN
-    # ========================================================
-
-    update_time = latest["openTime"].strftime(
-        "%H:%M:%S"
+    st.plotly_chart(
+        fig,
+        use_container_width=True
     )
 
 
@@ -256,7 +190,7 @@ def update_graph(n):
     # STATUS
     # ========================================================
 
-    status = (
+    st.info(
 
         f"Latest candle: {update_time} | "
 
@@ -266,37 +200,24 @@ def update_graph(n):
 
         f"Low: ${latest['low']:.2f} | "
 
-        f"Close: ${latest['close']:.2f} | "
-
-        f"Update #{n}"
+        f"Close: ${latest['close']:.2f}"
     )
 
 
     # ========================================================
-    # TRẢ KẾT QUẢ
+    # DATA SOURCE
     # ========================================================
 
-    return (
-
-        fig,
-
-        f"${current_price:.2f}",
-
-        price_change,
-
-        update_time,
-
-        status
+    st.caption(
+        "Data Source: BiQuote API | "
+        "Symbol: XAU/USD | "
+        "Candle Interval: 1 minute | "
+        "Dashboard Refresh: 3 seconds"
     )
 
 
-# ============================================================
-# CHẠY APP
-# ============================================================
+except Exception as e:
 
-if __name__ == "__main__":
-    app.run(
-        host="0.0.0.0",
-        port=8050,
-        debug=False
+    st.error(
+        f"Unable to retrieve data from API: {e}"
     )
