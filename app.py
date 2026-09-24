@@ -2,22 +2,11 @@ import requests
 import pandas as pd
 import streamlit as st
 import plotly.graph_objects as go
-from streamlit_autorefresh import st_autorefresh
-
-
-# ============================================================
-# PAGE CONFIG
-# ============================================================
 
 st.set_page_config(
     page_title="Real-Time Gold Price",
     layout="wide"
 )
-
-
-# ============================================================
-# API
-# ============================================================
 
 API_URL = "https://biquote.io/api/XAUUSD/ohlc"
 
@@ -27,12 +16,7 @@ PARAMS = {
 }
 
 
-# ============================================================
-# LẤY DỮ LIỆU TỪ API
-# ============================================================
-
 def get_candles():
-
     response = requests.get(
         API_URL,
         params=PARAMS,
@@ -45,179 +29,141 @@ def get_candles():
 
     df = pd.DataFrame(data["bars"])
 
-    df["openTime"] = pd.to_datetime(
-        df["openTime"]
-    )
+    df["openTime"] = pd.to_datetime(df["openTime"])
 
     df = df.sort_values("openTime")
 
     return df
 
 
-# ============================================================
-# REAL-TIME REFRESH
-# ============================================================
+st.title("Real-Time Gold Price Dashboard")
+st.subheader("XAU/USD - 1 Minute Candlestick")
 
-st_autorefresh(
-    interval=3000,
-    key="gold_price_refresh"
+st.caption(
+    "The dashboard automatically updates every 5 seconds "
+    "using real-time data from an external API."
 )
 
 
-# ============================================================
-# TITLE
-# ============================================================
+@st.fragment(run_every="5s")
+def realtime_dashboard():
 
-st.title("Real-Time Gold Price Dashboard")
+    try:
+        # Get latest data
+        df = get_candles()
 
-st.subheader("XAU/USD - 1 Minute Candlestick")
+        # Latest candle
+        latest = df.iloc[-1]
+
+        current_price = float(latest["close"])
+
+        # Calculate price change
+        if len(df) >= 2:
+
+            previous_price = float(df.iloc[-2]["close"])
+
+            change = current_price - previous_price
+
+            change_percent = (
+                change / previous_price
+            ) * 100
+
+        else:
+
+            change = 0
+
+            change_percent = 0
 
 
-# ============================================================
-# LẤY DỮ LIỆU
-# ============================================================
-
-try:
-
-    df = get_candles()
-
-    latest = df.iloc[-1]
-
-    current_price = float(latest["close"])
+        # Metrics
+        col1, col2, col3 = st.columns(3)
 
 
-    # --------------------------------------------------------
-    # PRICE CHANGE
-    # --------------------------------------------------------
+        with col1:
 
-    if len(df) >= 2:
+            st.metric(
+                "Current Price",
+                f"${current_price:.2f}"
+            )
 
-        previous_price = float(
-            df.iloc[-2]["close"]
+
+        with col2:
+
+            st.metric(
+                "Price Change",
+                f"${change:.2f}",
+                f"{change_percent:.2f}%"
+            )
+
+
+        with col3:
+
+            update_time = latest["openTime"].strftime(
+                "%H:%M:%S"
+            )
+
+            st.metric(
+                "Last Update",
+                update_time
+            )
+
+
+        # Candlestick chart
+        fig = go.Figure()
+
+
+        fig.add_trace(
+            go.Candlestick(
+                x=df["openTime"],
+                open=df["open"],
+                high=df["high"],
+                low=df["low"],
+                close=df["close"],
+                name="XAU/USD"
+            )
         )
 
-        change = current_price - previous_price
 
-        change_percent = (
-            change / previous_price
-        ) * 100
-
-    else:
-
-        change = 0
-        change_percent = 0
-
-
-    # ========================================================
-    # METRICS
-    # ========================================================
-
-    col1, col2, col3 = st.columns(3)
-
-    with col1:
-
-        st.metric(
-            "Current Price",
-            f"${current_price:.2f}"
-        )
-
-    with col2:
-
-        st.metric(
-            "Price Change",
-            f"${change:.2f}",
-            f"{change_percent:.2f}%"
-        )
-
-    with col3:
-
-        update_time = latest["openTime"].strftime(
-            "%H:%M:%S"
-        )
-
-        st.metric(
-            "Last Update",
-            update_time
+        fig.update_layout(
+            title="XAU/USD Real-Time Candlestick",
+            xaxis_title="Time",
+            yaxis_title="Price (USD)",
+            height=600,
+            xaxis_rangeslider_visible=False
         )
 
 
-    # ========================================================
-    # CANDLESTICK CHART
-    # ========================================================
-
-    fig = go.Figure()
-
-    fig.add_trace(
-
-        go.Candlestick(
-
-            x=df["openTime"],
-
-            open=df["open"],
-
-            high=df["high"],
-
-            low=df["low"],
-
-            close=df["close"],
-
-            name="XAU/USD"
+        st.plotly_chart(
+            fig,
+            use_container_width=True
         )
-    )
 
 
-    fig.update_layout(
-
-        title="XAU/USD Real-Time Candlestick",
-
-        xaxis_title="Time",
-
-        yaxis_title="Price (USD)",
-
-        height=600,
-
-        xaxis_rangeslider_visible=False
-    )
+        # Latest candle information
+        st.info(
+            f"Latest candle: {update_time} | "
+            f"Open: ${latest['open']:.2f} | "
+            f"High: ${latest['high']:.2f} | "
+            f"Low: ${latest['low']:.2f} | "
+            f"Close: ${latest['close']:.2f}"
+        )
 
 
-    st.plotly_chart(
-        fig,
-        use_container_width=True
-    )
+        # Data source
+        st.caption(
+            "Data Source: BiQuote API | "
+            "Symbol: XAU/USD | "
+            "Candle Interval: 1 minute | "
+            "Dashboard Refresh: 5 seconds"
+        )
 
 
-    # ========================================================
-    # STATUS
-    # ========================================================
+    except Exception as e:
 
-    st.info(
-
-        f"Latest candle: {update_time} | "
-
-        f"Open: ${latest['open']:.2f} | "
-
-        f"High: ${latest['high']:.2f} | "
-
-        f"Low: ${latest['low']:.2f} | "
-
-        f"Close: ${latest['close']:.2f}"
-    )
+        st.error(
+            f"Unable to retrieve data from API: {e}"
+        )
 
 
-    # ========================================================
-    # DATA SOURCE
-    # ========================================================
-
-    st.caption(
-        "Data Source: BiQuote API | "
-        "Symbol: XAU/USD | "
-        "Candle Interval: 1 minute | "
-        "Dashboard Refresh: 3 seconds"
-    )
-
-
-except Exception as e:
-
-    st.error(
-        f"Unable to retrieve data from API: {e}"
-    )
+# Start realtime dashboard
+realtime_dashboard()
