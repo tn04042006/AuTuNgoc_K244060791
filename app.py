@@ -1,169 +1,234 @@
-import requests
-import pandas as pd
 import streamlit as st
-import plotly.graph_objects as go
+import streamlit.components.v1 as components
 
 st.set_page_config(
     page_title="Real-Time Gold Price",
     layout="wide"
 )
 
-API_URL = "https://biquote.io/api/XAUUSD/ohlc"
+st.title("Real-Time Gold Price Dashboard")
+st.subheader("XAU/USD - Real-Time Candlestick")
 
-PARAMS = {
-    "interval": "1m",
-    "limit": 30
+html_code = """
+<!DOCTYPE html>
+<html>
+<head>
+
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+
+<style>
+
+body {
+    margin: 0;
+    font-family: Arial, sans-serif;
+    background: white;
+}
+
+#chart {
+    width: 100%;
+    height: 600px;
+}
+
+#status {
+    padding: 10px;
+    font-size: 14px;
+}
+
+</style>
+
+</head>
+
+<body>
+
+<div id="chart"></div>
+
+<div id="status">
+    Connecting to XAU/USD API...
+</div>
+
+
+<script>
+
+const API_URL =
+    "https://biquote.io/api/XAUUSD/ohlc?interval=1m&limit=30";
+
+
+async function updateChart() {
+
+    try {
+
+        const response = await fetch(API_URL);
+
+        if (!response.ok) {
+            throw new Error("API request failed");
+        }
+
+        const data = await response.json();
+
+        const bars = data.bars;
+
+        const times = [];
+        const opens = [];
+        const highs = [];
+        const lows = [];
+        const closes = [];
+
+
+        bars.forEach(bar => {
+
+            times.push(bar.openTime);
+
+            opens.push(Number(bar.open));
+
+            highs.push(Number(bar.high));
+
+            lows.push(Number(bar.low));
+
+            closes.push(Number(bar.close));
+
+        });
+
+
+        const latestPrice =
+            closes[closes.length - 1];
+
+
+        const previousPrice =
+            closes[closes.length - 2];
+
+
+        const change =
+            latestPrice - previousPrice;
+
+
+        const changePercent =
+            (change / previousPrice) * 100;
+
+
+        const trace = {
+
+            x: times,
+
+            open: opens,
+
+            high: highs,
+
+            low: lows,
+
+            close: closes,
+
+            type: "candlestick",
+
+            name: "XAU/USD"
+
+        };
+
+
+        const layout = {
+
+            title: "XAU/USD Real-Time Candlestick",
+
+            xaxis: {
+                title: "Time",
+                rangeslider: {
+                    visible: false
+                }
+            },
+
+            yaxis: {
+                title: "Price (USD)"
+            },
+
+            height: 600,
+
+            margin: {
+                l: 60,
+                r: 30,
+                t: 60,
+                b: 50
+            }
+
+        };
+
+
+        const chart =
+            document.getElementById("chart");
+
+
+        if (!chart.data) {
+
+            Plotly.newPlot(
+                chart,
+                [trace],
+                layout,
+                {
+                    responsive: true
+                }
+            );
+
+        } else {
+
+            Plotly.react(
+                chart,
+                [trace],
+                layout,
+                {
+                    responsive: true
+                }
+            );
+
+        }
+
+
+        document.getElementById("status").innerHTML =
+            "Current Price: $" +
+            latestPrice.toFixed(2) +
+            " &nbsp; | &nbsp; Change: $" +
+            change.toFixed(2) +
+            " (" +
+            changePercent.toFixed(2) +
+            "%) &nbsp; | &nbsp; Updated: " +
+            new Date().toLocaleTimeString();
+
+    }
+
+    catch (error) {
+
+        document.getElementById("status").innerHTML =
+            "Unable to retrieve data: " +
+            error.message;
+
+    }
+
 }
 
 
-def get_candles():
-    response = requests.get(
-        API_URL,
-        params=PARAMS,
-        timeout=10
-    )
-
-    response.raise_for_status()
-
-    data = response.json()
-
-    df = pd.DataFrame(data["bars"])
-
-    df["openTime"] = pd.to_datetime(df["openTime"])
-
-    df = df.sort_values("openTime")
-
-    return df
+// First update
+updateChart();
 
 
-st.title("Real-Time Gold Price Dashboard")
-st.subheader("XAU/USD - 1 Minute Candlestick")
+// Update every 3 seconds
+setInterval(
+    updateChart,
+    3000
+);
 
-st.caption(
-    "The dashboard automatically updates every 5 seconds "
-    "using real-time data from an external API."
+</script>
+
+</body>
+</html>
+"""
+
+
+components.html(
+    html_code,
+    height=700,
+    scrolling=False
 )
 
 
-@st.fragment(run_every="5s")
-def realtime_dashboard():
-
-    try:
-        # Get latest data
-        df = get_candles()
-
-        # Latest candle
-        latest = df.iloc[-1]
-
-        current_price = float(latest["close"])
-
-        # Calculate price change
-        if len(df) >= 2:
-
-            previous_price = float(df.iloc[-2]["close"])
-
-            change = current_price - previous_price
-
-            change_percent = (
-                change / previous_price
-            ) * 100
-
-        else:
-
-            change = 0
-
-            change_percent = 0
-
-
-        # Metrics
-        col1, col2, col3 = st.columns(3)
-
-
-        with col1:
-
-            st.metric(
-                "Current Price",
-                f"${current_price:.2f}"
-            )
-
-
-        with col2:
-
-            st.metric(
-                "Price Change",
-                f"${change:.2f}",
-                f"{change_percent:.2f}%"
-            )
-
-
-        with col3:
-
-            update_time = latest["openTime"].strftime(
-                "%H:%M:%S"
-            )
-
-            st.metric(
-                "Last Update",
-                update_time
-            )
-
-
-        # Candlestick chart
-        fig = go.Figure()
-
-
-        fig.add_trace(
-            go.Candlestick(
-                x=df["openTime"],
-                open=df["open"],
-                high=df["high"],
-                low=df["low"],
-                close=df["close"],
-                name="XAU/USD"
-            )
-        )
-
-
-        fig.update_layout(
-            title="XAU/USD Real-Time Candlestick",
-            xaxis_title="Time",
-            yaxis_title="Price (USD)",
-            height=600,
-            xaxis_rangeslider_visible=False
-        )
-
-
-        st.plotly_chart(
-            fig,
-            use_container_width=True
-        )
-
-
-        # Latest candle information
-        st.info(
-            f"Latest candle: {update_time} | "
-            f"Open: ${latest['open']:.2f} | "
-            f"High: ${latest['high']:.2f} | "
-            f"Low: ${latest['low']:.2f} | "
-            f"Close: ${latest['close']:.2f}"
-        )
-
-
-        # Data source
-        st.caption(
-            "Data Source: BiQuote API | "
-            "Symbol: XAU/USD | "
-            "Candle Interval: 1 minute | "
-            "Dashboard Refresh: 5 seconds"
-        )
-
-
-    except Exception as e:
-
-        st.error(
-            f"Unable to retrieve data from API: {e}"
-        )
-
-
-# Start realtime dashboard
-realtime_dashboard()
+st.caption(
+    "Data Source: BiQuote API | "
+    "Symbol: XAU/USD | "
+    "Update Interval: 3 seconds"
+)
